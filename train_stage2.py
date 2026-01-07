@@ -9,7 +9,7 @@ from tqdm import tqdm
 import os
 import numpy as np
 
-from model import EEG_Encoder, freeze_backbone
+from models import create_model, freeze_backbone
 from fishr import FishrLoss
 from data_loader import load_seed_data, prepare_stage2_data, sample_multi_domain_batch
 
@@ -79,12 +79,29 @@ def train_stage2(source_data, source_labels, target_data, target_labels,
 
     # 创建模型
     print("\n=== Building Model ===")
-    model = EEG_Encoder(
-        input_dim=310,
-        hidden_dim=config['hidden_dim'],
-        num_classes=3,
-        dropout=config['dropout']
-    ).to(device)
+    model_type = config.get('model_type', 'mlp')  # 默认使用MLP
+    print(f"Model type: {model_type}")
+
+    if model_type.lower() == 'mlp':
+        model = create_model(
+            model_type='mlp',
+            input_dim=310,
+            hidden_dim=config['hidden_dim'],
+            num_classes=3,
+            dropout=config['dropout']
+        ).to(device)
+    elif model_type.lower() == 'dgcnn':
+        model = create_model(
+            model_type='dgcnn',
+            num_electrodes=62,
+            in_channels=5,
+            num_classes=3,
+            k=config.get('k', 2),
+            layers=config.get('layers', [64]),
+            dropout=config['dropout']
+        ).to(device)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
 
     # 加载Stage 1权重（使用项目根目录的绝对路径）
     stage1_path = os.path.join(PROJECT_ROOT, f"checkpoints/stage1_testid{test_id}_best.pth")
@@ -245,18 +262,27 @@ def train_stage2(source_data, source_labels, target_data, target_labels,
     print(f"Stage 2 Final Test Acc: {final_test_acc:.2%}")
     print(f"Improvement: {final_test_acc - initial_test_acc:.2%}")
 
-    return model, final_test_acc
+    return model, final_test_acc, initial_test_acc
 
 
 if __name__ == '__main__':
     # 配置
     config = {
+        'model_type': 'mlp',  # 'mlp' 或 'dgcnn'
+
+        # MLP参数
         'hidden_dim': 128,
         'dropout': 0.5,
+
+        # DGCNN参数（仅当model_type='dgcnn'时使用）
+        'k': 2,
+        'layers': [64],
+
+        # 训练参数
         'lr': 1e-3,
         'lr_ratio': 0.5,  # Stage 2学习率是Stage 1的0.5x
         'weight_decay': 1e-4,
-        'epochs_stage2': 50,  # 修改为epochs_stage2以匹配main.py
+        'epochs_stage2': 50,
         'freeze_ratio': 0.7,  # 冻结70%的backbone
         'm': 4,  # 每次采样4个域
         'lambda_fishr_max': 0.3,  # Fishr最大权重
@@ -280,7 +306,7 @@ if __name__ == '__main__':
     )
 
     # 训练
-    model, best_test_acc = train_stage2(
+    model, final_test_acc, initial_test_acc = train_stage2(
         source_data=source_data,
         source_labels=source_labels,
         target_data=target_data,
@@ -290,3 +316,5 @@ if __name__ == '__main__':
     )
 
     print("\nDone!")
+    print(f"Final test accuracy: {final_test_acc:.2%}")
+    print(f"Improvement: {final_test_acc - initial_test_acc:+.2%}")

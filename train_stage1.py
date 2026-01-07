@@ -9,7 +9,7 @@ from tqdm import tqdm
 import os
 import numpy as np
 
-from model import EEG_Encoder
+from models import create_model, freeze_backbone
 from data_loader import load_seed_data, prepare_stage1_data
 
 # 获取项目根目录（本脚本所在目录）
@@ -45,12 +45,29 @@ def train_stage1(source_data, source_labels, test_id, config, val_subject_indice
 
     # 创建模型
     print("\n=== Building Model ===")
-    model = EEG_Encoder(
-        input_dim=310,
-        hidden_dim=config['hidden_dim'],
-        num_classes=3,
-        dropout=config['dropout']
-    ).to(device)
+    model_type = config.get('model_type', 'mlp')  # 默认使用MLP
+    print(f"Model type: {model_type}")
+
+    if model_type.lower() == 'mlp':
+        model = create_model(
+            model_type='mlp',
+            input_dim=310,
+            hidden_dim=config['hidden_dim'],
+            num_classes=3,
+            dropout=config['dropout']
+        ).to(device)
+    elif model_type.lower() == 'dgcnn':
+        model = create_model(
+            model_type='dgcnn',
+            num_electrodes=62,
+            in_channels=5,
+            num_classes=3,
+            k=config.get('k', 2),
+            layers=config.get('layers', [64]),
+            dropout=config['dropout']
+        ).to(device)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
 
     # 优化器
     optimizer = optim.Adam(
@@ -163,11 +180,20 @@ def train_stage1(source_data, source_labels, test_id, config, val_subject_indice
 if __name__ == '__main__':
     # 配置
     config = {
+        'model_type': 'mlp',  # 'mlp' 或 'dgcnn'
+
+        # MLP参数
         'hidden_dim': 128,
         'dropout': 0.5,
+
+        # DGCNN参数（仅当model_type='dgcnn'时使用）
+        'k': 2,
+        'layers': [64],
+
+        # 训练参数
         'lr': 1e-3,
         'weight_decay': 1e-4,
-        'epochs_stage1': 60,  # 修改为epochs_stage1以匹配main.py
+        'epochs_stage1': 60,
         'patience': 15,
         'session': 1,
     }

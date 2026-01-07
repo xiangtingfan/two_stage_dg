@@ -40,29 +40,32 @@ except Exception as e:
 # ========== 2. 测试模型 ==========
 print("\n[2/5] Testing model...")
 try:
-    from model import EEG_Encoder, freeze_backbone
+    from models import create_model, freeze_backbone
 
-    model = EEG_Encoder()
+    # 测试MLP
+    print("  Testing MLP...")
+    model_mlp = create_model('mlp', hidden_dim=128, dropout=0.5)
     x = torch.randn(16, 310)
-    logits, features = model(x)
+    logits, features = model_mlp(x)
+    print(f"  ✓ MLP Input: {x.shape}, Features: {features.shape}, Logits: {logits.shape}")
 
-    print(f"✓ Model forward pass successful")
-    print(f"  Input: {x.shape}")
-    print(f"  Features: {features.shape}")
-    print(f"  Logits: {logits.shape}")
-
-    # 测试预测
-    preds = model.predict(x)
-    print(f"✓ Predictions: {preds.shape}")
+    # 测试DGCNN
+    print("  Testing DGCNN...")
+    model_dgcnn = create_model('dgcnn', k=2, layers=[64], dropout=0.5)
+    logits_dgcnn, features_dgcnn = model_dgcnn(x)
+    print(f"  ✓ DGCNN Input: {x.shape}, Features: {features_dgcnn.shape}, Logits: {logits_dgcnn.shape}")
 
     # 测试冻结
-    model_frozen = freeze_backbone(model, freeze_ratio=0.5)
+    print("  Testing freeze...")
+    model_frozen = freeze_backbone(model_mlp, freeze_ratio=0.5)
     total_params = sum(p.numel() for p in model_frozen.parameters())
     trainable_params = sum(p.numel() for p in model_frozen.parameters() if p.requires_grad)
-    print(f"✓ Freeze: {trainable_params}/{total_params} params trainable ({100*trainable_params/total_params:.1f}%)")
+    print(f"  ✓ Freeze: {trainable_params}/{total_params} params trainable ({100*trainable_params/total_params:.1f}%)")
 
 except Exception as e:
     print(f"✗ Model test failed: {e}")
+    import traceback
+    traceback.print_exc()
     exit(1)
 
 # ========== 3. 测试Fishr损失 ==========
@@ -80,7 +83,7 @@ try:
         labels = torch.randint(0, 3, (8, 3)).float()
         domain_batches.append((data, labels, i))
 
-    fishr_loss = fishr_loss_fn(model, domain_batches, criterion)
+    fishr_loss = fishr_loss_fn(model_mlp, domain_batches, criterion)
     print(f"✓ Fishr loss computed: {fishr_loss.item():.4f}")
 
 except Exception as e:
@@ -93,7 +96,7 @@ try:
     from data_loader import sample_multi_domain_batch
 
     # Stage 1单步测试
-    model = EEG_Encoder()
+    model = create_model('mlp', hidden_dim=128, dropout=0.5)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -147,7 +150,7 @@ if torch.cuda.is_available():
         print(f"✓ CUDA available: {torch.cuda.get_device_name(0)}")
 
         # 测试GPU上的模型
-        model = EEG_Encoder().to(device)
+        model = create_model('mlp').to(device)
         x = torch.randn(16, 310).to(device)
         logits, features = model(x)
         print(f"✓ Model on GPU: input={x.shape}, output={logits.shape}")
