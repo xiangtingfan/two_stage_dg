@@ -9,7 +9,7 @@ from tqdm import tqdm
 import os
 import numpy as np
 
-from models import create_model, freeze_backbone
+from models import create_model, freeze_backbone, EEG_DGCNN
 from fishr import FishrLoss
 from data_loader import load_seed_data, prepare_stage2_data, sample_multi_domain_batch
 
@@ -121,12 +121,40 @@ def train_stage2(source_data, source_labels, target_data, target_labels,
     print(f"Total params: {total_params:,}")
     print(f"Trainable params: {trainable_params:,} ({100*trainable_params/total_params:.1f}%)")
 
-    # 更小的学习率
-    optimizer = optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=config['lr'] * config['lr_ratio'],  # 0.5x
-        weight_decay=config['weight_decay']
-    )
+    # 更小的学习率（支持分层学习率）
+    base_lr = config['lr']
+
+    # 检查是否使用分层学习率
+    if config.get('use_layered_lr', False) and isinstance(model, EEG_DGCNN):
+        # 分层学习率：不同层使用不同学习率
+        print("Using layered learning rates:")
+        print(f"  - GraphConv: {base_lr * config.get('lr_graphconv', 0.5):.2e}")
+        print(f"  - B1ReLU:    {base_lr * config.get('lr_brelu', 1.0):.2e}")
+        print(f"  - fc2:       {base_lr * config.get('lr_fc2', 1.0):.2e}")
+
+        optimizer = optim.Adam([
+            {
+                'params': model.graph_convs.parameters(),
+                'lr': base_lr * config.get('lr_graphconv', 0.5)
+            },
+            {
+                'params': model.b_relus.parameters(),
+                'lr': base_lr * config.get('lr_brelu', 1.0)
+            },
+            {
+                'params': model.fc2.parameters(),
+                'lr': base_lr * config.get('lr_fc2', 1.0)
+            }
+        ], weight_decay=config['weight_decay'])
+    else:
+        # 统一学习率（MLP或未启用分层学习率）
+        lr = base_lr * config['lr_ratio']
+        print(f"Using unified learning rate: {lr:.2e}")
+        optimizer = optim.Adam(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=lr,
+            weight_decay=config['weight_decay']
+        )
 
     # 学习率调度器
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
@@ -280,7 +308,11 @@ if __name__ == '__main__':
 
         # 训练参数
         'lr': 1e-3,
-        'lr_ratio': 0.5,  # Stage 2学习率是Stage 1的0.5x
+        'lr_ratio': 0.5,  # Stage 2学习率是Stage 1的0.5x（仅当use_layered_lr=False时使用）
+        'use_layered_lr': False,  # 是否使用分层学习率（仅DGCNN有效）
+        'lr_graphconv': 0.5,  # GraphConv学习率倍数
+        'lr_brelu': 1.0,  # B1ReLU学习率倍数
+        'lr_fc2': 1.0,  # fc2学习率倍数
         'weight_decay': 1e-4,
         'epochs_stage2': 50,
         'freeze_ratio': 0.7,  # 冻结70%的backbone

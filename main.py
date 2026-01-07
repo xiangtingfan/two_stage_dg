@@ -215,7 +215,13 @@ def loso_experiment(config):
         f.write(f"  patience: {config['patience']}\n\n")
 
         f.write("Stage 2 Settings:\n")
-        f.write(f"  lr_ratio: {config['lr_ratio']}\n")
+        f.write(f"  use_layered_lr: {config.get('use_layered_lr', False)}\n")
+        if config.get('use_layered_lr', False):
+            f.write(f"  lr_graphconv: {config.get('lr_graphconv', 0.5)} (relative to Stage 1)\n")
+            f.write(f"  lr_brelu: {config.get('lr_brelu', 1.0)}\n")
+            f.write(f"  lr_fc2: {config.get('lr_fc2', 1.0)}\n")
+        else:
+            f.write(f"  lr_ratio: {config['lr_ratio']} (unified LR for all layers)\n")
         f.write(f"  epochs_stage2: {config['epochs_stage2']}\n")
         f.write(f"  freeze_ratio: {config['freeze_ratio']}\n")
         f.write(f"  m (domains per batch): {config['m']}\n")
@@ -251,11 +257,15 @@ if __name__ == '__main__':
         # Stage 1
         'lr': 1e-3,
         'weight_decay': 1e-4,
-        'epochs_stage1': 60,
-        'patience': 15,
+        'epochs_stage1': 100,
+        'patience': 20,
 
         # Stage 2
-        'lr_ratio': 0.5,  # Stage 2学习率是Stage 1的0.5x
+        'lr_ratio': 0.5,  # Stage 2学习率是Stage 1的0.5x（仅当use_layered_lr=False时使用）
+        'use_layered_lr': True,  # 是否使用分层学习率（仅DGCNN有效）
+        'lr_graphconv': 0.5,  # GraphConv学习率倍数（相对于Stage 1）
+        'lr_brelu': 1.0,  # B1ReLU学习率倍数
+        'lr_fc2': 1.0,  # fc2学习率倍数
         'epochs_stage2': 50,
         'freeze_ratio': 0.7,  # 冻结70%的backbone
         'm': 4,  # 每次采样4个域
