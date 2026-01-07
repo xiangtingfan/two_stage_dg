@@ -7,7 +7,7 @@ import numpy as np
 import os
 from datetime import datetime
 
-from data_loader import load_seed_data
+from data_loader import load_seed_data, prepare_stage2_data
 from train_stage1 import train_stage1
 from train_stage2 import train_stage2
 
@@ -45,21 +45,37 @@ def loso_experiment(config):
             session=config['session']
         )
 
+        # ========== 划分源被试：训练被试 vs 验证被试 ==========
+        # 先划分，确保Stage 1和Stage 2使用相同的验证被试
+        print("\n" + "="*80)
+        print("SUBJECT SPLIT")
+        print("="*80)
+
+        # 随机划分源被试为训练被试和验证被试
+        np.random.seed(config['seed'])  # 固定随机种子，确保可重复
+        _, _, val_subject_indices = prepare_stage2_data(
+            source_data=source_data,
+            source_labels=source_labels,
+            val_ratio=0.2  # 20%的源被试作为验证集
+        )
+        print(f"\nValidation subjects indices (will be excluded from Stage 1): {val_subject_indices}")
+
         # ========== Stage 1: ERM预训练 ==========
         print("\n" + "="*80)
-        print("STAGE 1: ERM Pre-training")
+        print("STAGE 1: ERM Pre-training (using training subjects only)")
         print("="*80)
 
         model_stage1, best_val_acc = train_stage1(
             source_data=source_data,
             source_labels=source_labels,
             test_id=test_id,
-            config=config
+            config=config,
+            val_subject_indices=val_subject_indices  # 传递验证被试索引
         )
 
         # ========== Stage 2: DG微调 ==========
         print("\n" + "="*80)
-        print("STAGE 2: DG Fine-tuning")
+        print("STAGE 2: DG Fine-tuning (using training subjects for train, val subjects for validation)")
         print("="*80)
 
         model_stage2, best_test_acc = train_stage2(
@@ -68,7 +84,8 @@ def loso_experiment(config):
             target_data=target_data,
             target_labels=target_labels,
             test_id=test_id,
-            config=config
+            config=config,
+            val_subject_indices=val_subject_indices  # 传递验证被试索引
         )
 
         # 记录结果

@@ -25,12 +25,13 @@ try:
     print(f"✓ Source data shapes: {[d.shape for d in source_data[:3]]}...")
 
     # 测试Stage 1数据准备
-    train_loader, val_loader = prepare_stage1_data(source_data, source_labels)
+    train_loader, val_loader = prepare_stage1_data(source_data, source_labels, val_subject_indices=None)
     print(f"✓ Stage 1: Train batches={len(train_loader)}, Val batches={len(val_loader)}")
 
     # 测试Stage 2数据准备
-    domain_loaders, val_loader = prepare_stage2_data(source_data, source_labels)
+    domain_loaders, val_loader, val_subject_indices = prepare_stage2_data(source_data, source_labels)
     print(f"✓ Stage 2: {len(domain_loaders)} domain loaders, Val batches={len(val_loader)}")
+    print(f"  Validation subjects: {val_subject_indices}")
 
 except Exception as e:
     print(f"✗ Data loader failed: {e}")

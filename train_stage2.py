@@ -47,7 +47,7 @@ def loso_evaluate(model, target_data, target_labels, device):
 
 
 def train_stage2(source_data, source_labels, target_data, target_labels,
-                 test_id, config):
+                 test_id, config, val_subject_indices=None):
     """
     Stage 2训练
 
@@ -58,6 +58,7 @@ def train_stage2(source_data, source_labels, target_data, target_labels,
         target_labels: [n_samples, 3]
         test_id: 测试被试ID
         config: 训练配置
+        val_subject_indices: list of int - 验证被试的索引（如果提供，则使用这些被试验证）
 
     Returns:
         model: 训练好的模型
@@ -69,7 +70,12 @@ def train_stage2(source_data, source_labels, target_data, target_labels,
 
     # 准备数据（按域）
     print("\n=== Preparing Stage 2 Data ===")
-    domain_loaders, val_loader = prepare_stage2_data(source_data, source_labels)
+    domain_loaders, val_loader, _ = prepare_stage2_data(
+        source_data=source_data,
+        source_labels=source_labels,
+        val_ratio=0.2,
+        val_subject_indices=val_subject_indices  # 使用main.py中划分的验证被试
+    )
 
     # 创建模型
     print("\n=== Building Model ===")

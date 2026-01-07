@@ -16,7 +16,7 @@ from data_loader import load_seed_data, prepare_stage1_data
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
-def train_stage1(source_data, source_labels, test_id, config):
+def train_stage1(source_data, source_labels, test_id, config, val_subject_indices=None):
     """
     Stage 1训练
 
@@ -25,6 +25,7 @@ def train_stage1(source_data, source_labels, test_id, config):
         source_labels: list of [n_samples, 3]
         test_id: 测试被试ID
         config: 训练配置
+        val_subject_indices: list of int - 验证被试的索引（从源被试中排除）
 
     Returns:
         model: 训练好的模型
@@ -36,7 +37,11 @@ def train_stage1(source_data, source_labels, test_id, config):
 
     # 准备数据
     print("\n=== Preparing Stage 1 Data ===")
-    train_loader, val_loader = prepare_stage1_data(source_data, source_labels)
+    train_loader, val_loader = prepare_stage1_data(
+        source_data=source_data,
+        source_labels=source_labels,
+        val_subject_indices=val_subject_indices  # 排除验证被试
+    )
 
     # 创建模型
     print("\n=== Building Model ===")

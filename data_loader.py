@@ -88,16 +88,31 @@ def load_seed_data(test_id, session=1, data_path='H:/SEED/feature_for_net_sessio
     return source_data, source_labels, target_data, target_labels
 
 
-def prepare_stage1_data(source_data, source_labels):
+def prepare_stage1_data(source_data, source_labels, val_subject_indices=None):
     """
-    Stage 1数据准备：混合所有源被试
+    Stage 1数据准备：混合训练被试
 
-    重要：按trial级别划分，确保同一个trial的数据不会同时出现在训练集和验证集
+    重要：
+    - 如果提供了val_subject_indices，则只使用训练被试（排除验证被试）
+    - 确保Stage 1和Stage 2使用相同的被试划分
+    - 在训练被试内部按trial划分训练/验证集
+
+    Args:
+        source_data: list of [n_samples, 310]
+        source_labels: list of [n_samples, 3]
+        val_subject_indices: list of int - 验证被试的索引（如果提供，则排除这些被试）
 
     Returns:
-        train_loader: DataLoader (混合所有源被试)
-        val_loader: DataLoader (从源被试中划分20%作为验证集)
+        train_loader: DataLoader (混合训练被试)
+        val_loader: DataLoader (从训练被试中按trial划分20%作为验证集)
     """
+    # 如果指定了验证被试，则只使用训练被试
+    if val_subject_indices is not None:
+        train_subject_indices = [i for i in range(len(source_data)) if i not in val_subject_indices]
+        source_data = [source_data[i] for i in train_subject_indices]
+        source_labels = [source_labels[i] for i in train_subject_indices]
+        print(f"Stage 1: Using {len(source_data)} training subjects (excluding val subjects {val_subject_indices})")
+
     # SEED数据集每个被试有15个trial (video)
     video_time = [235, 233, 206, 238, 185, 195, 237, 216, 265, 237, 235, 233, 235, 238, 206]
 
@@ -181,7 +196,7 @@ def prepare_stage1_data(source_data, source_labels):
     return train_loader, val_loader
 
 
-def prepare_stage2_data(source_data, source_labels, val_ratio=0.2):
+def prepare_stage2_data(source_data, source_labels, val_ratio=0.2, val_subject_indices=None):
     """
     Stage 2数据准备：按被试组织（每个被试独立）
     同时划分验证集（按被试划分，而不是trial）
@@ -191,20 +206,29 @@ def prepare_stage2_data(source_data, source_labels, val_ratio=0.2):
     Args:
         source_data: list of [n_samples, 310]
         source_labels: list of [n_samples, 3]
-        val_ratio: 验证集比例（用于选择验证被试数量）
+        val_ratio: 验证集比例（用于选择验证被试数量，当val_subject_indices为None时使用）
+        val_subject_indices: list of int - 指定的验证被试索引（如果提供，则不再随机划分）
 
     Returns:
         domain_loaders: list of DataLoader - 每个训练被试一个loader
         val_loader: DataLoader - 验证被试的合并数据
+        val_subject_indices: list of int - 验证被试的索引（供Stage 1使用）
     """
     num_subjects = len(source_data)
-    num_val_subjects = max(1, int(num_subjects * val_ratio))  # 至少保留1个被试验证
-    num_train_subjects = num_subjects - num_val_subjects
 
-    # 随机选择哪些被试作为验证集
-    subject_indices = np.random.permutation(num_subjects)
-    train_subject_indices = subject_indices[:num_train_subjects]
-    val_subject_indices = subject_indices[num_train_subjects:]
+    # 如果没有提供验证被试索引，则随机划分
+    if val_subject_indices is None:
+        num_val_subjects = max(1, int(num_subjects * val_ratio))  # 至少保留1个被试验证
+        num_train_subjects = num_subjects - num_val_subjects
+
+        # 随机选择哪些被试作为验证集
+        subject_indices = np.random.permutation(num_subjects)
+        train_subject_indices = subject_indices[:num_train_subjects]
+        val_subject_indices = subject_indices[num_train_subjects:].tolist()  # 转为list
+    else:
+        # 使用提供的验证被试索引
+        val_subject_indices = val_subject_indices if isinstance(val_subject_indices, list) else list(val_subject_indices)
+        train_subject_indices = [i for i in range(num_subjects) if i not in val_subject_indices]
 
     print(f"Stage 2 Subject split: {len(train_subject_indices)} subjects for train, {len(val_subject_indices)} subjects for val")
     print(f"  Train subjects: {train_subject_indices}")
@@ -250,7 +274,7 @@ def prepare_stage2_data(source_data, source_labels, val_ratio=0.2):
 
     print(f"Stage 2: {len(domain_loaders)} domain loaders for train, Val={len(val_data)} samples from {len(val_subject_indices)} subjects")
 
-    return domain_loaders, val_loader
+    return domain_loaders, val_loader, val_subject_indices
 
 
 def sample_multi_domain_batch(domain_loaders, m=4):
